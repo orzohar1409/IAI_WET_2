@@ -14,7 +14,8 @@ def smart_heuristic(env: WarehouseEnv, robot_id: int):
 
     credit = robot.credit
     battery = robot.battery
-    credit_factor = max(1, credit)
+    credit_factor = max(1, credit) * 100
+    holding_package_factor = 10 if robot.package is not None else 0
 
     if robot.package is None:
         # Not holding a package: go get one
@@ -23,12 +24,11 @@ def smart_heuristic(env: WarehouseEnv, robot_id: int):
             if package.on_board:
                 my_distance = manhattan_distance(robot.position, package.position)
                 other_distance = manhattan_distance(other_robot.position, package.position)
-                # Prefer packages we can reach first
+                # Prefer packages we can reach firstס
                 if my_distance < other_distance:
                     closest_package_distance = min(closest_package_distance, my_distance)
-
         if closest_package_distance < float('inf'):
-            heuristic_value += ((1 / (closest_package_distance + 1)) + credit_factor )# weight can be tuned
+            heuristic_value += (1 / (closest_package_distance + 1))# weight can be tuned
     else:
         # Holding a package: go to drop-off
         distance_to_drop_off = manhattan_distance(robot.position, robot.package.destination)
@@ -38,10 +38,8 @@ def smart_heuristic(env: WarehouseEnv, robot_id: int):
         heuristic_value += (package_value / (distance_to_drop_off + 1)) * 5  # reward for progress
 
         # Strong bonus if standing on drop-off location and able to drop
-        if robot.position == robot.package.destination:
-            heuristic_value = 1000  # huge bonus to encourage actually dropping it off
 
-    return heuristic_value
+    return heuristic_value + credit_factor + holding_package_factor
 
 class AgentGreedyImproved(AgentGreedy):
     def heuristic(self, env: WarehouseEnv, robot_id: int):
