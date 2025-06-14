@@ -348,6 +348,7 @@ class WarehouseEnv(object):
 
 
         self.window.blit(canvas, (0, 0))
+        pygame.event.pump()
         pygame.display.update()
         self.clock.tick(5)
         # time.sleep(1)
