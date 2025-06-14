@@ -1,7 +1,7 @@
 from Agent import Agent, AgentGreedy
 from WarehouseEnv import WarehouseEnv, manhattan_distance
 import random
-
+import time
 
 
 # TODO: section a : 3
@@ -46,10 +46,71 @@ class AgentGreedyImproved(AgentGreedy):
         return smart_heuristic(env, robot_id)
 
 
+
 class AgentMinimax(Agent):
-    # TODO: section b : 1
-    def run_step(self, env: WarehouseEnv, agent_id, time_limit):
-        raise NotImplementedError()
+    def __init__(self):
+        super().__init__()
+    def run_step(self, env, agent_id, time_limit):
+        start_time = time.time()
+        best_score = float('-inf')
+        best_action = None
+        legal_actions = env.get_legal_operators(agent_id)
+
+        for action in legal_actions:
+            if time.time() - start_time > time_limit:
+                break
+            cloned_env = env.clone()
+            cloned_env.apply_operator(agent_id, action)
+            score = self.min_value(cloned_env, 1 - agent_id, start_time, time_limit)
+            if score > best_score:
+                best_score = score
+                best_action = action
+
+        return best_action
+
+    def max_value(self, env, agent_id, start_time, time_limit):
+        if env.done():
+            return self.utility(env, self.index)
+        if time.time() - start_time > time_limit:
+            return self.heuristic(env, agent_id)
+
+        v = float('-inf')
+        for action in env.get_legal_operators(agent_id):
+            if time.time() - start_time > time_limit:
+                break
+            cloned_env = env.clone()
+            cloned_env.apply_operator(agent_id, action)
+            v = max(v, self.min_value(cloned_env, 1 - agent_id, start_time, time_limit))
+        return v
+
+    def min_value(self, env, agent_id, start_time, time_limit):
+        if env.done():
+            return self.utility(env, self.index)
+        if time.time() - start_time > time_limit:
+            return self.heuristic(env, 1 - agent_id)
+
+        v = float('inf')
+        for action in env.get_legal_operators(agent_id):
+            if time.time() - start_time > time_limit:
+                break
+            cloned_env = env.clone()
+            cloned_env.apply_operator(agent_id, action)
+            v = min(v, self.max_value(cloned_env, 1 - agent_id, start_time, time_limit))
+        return v
+
+    def heuristic(self, env, agent_id):
+        # Use the smart heuristic defined earlier
+        return smart_heuristic(env, agent_id)
+
+    def utility(self, env, max_agent_id):
+        my_credit = env.get_robot(max_agent_id).credit
+        opp_credit = env.get_robot(1 - max_agent_id).credit
+        if my_credit > opp_credit:
+            return float('inf')  # win
+        elif my_credit < opp_credit:
+            return float('-inf')  # loss
+        else:
+            return 0  # draw
 
 
 class AgentAlphaBeta(Agent):
