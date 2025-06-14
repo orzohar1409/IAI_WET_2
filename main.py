@@ -54,7 +54,9 @@ def run_agents():
             for i, agent_name in enumerate(agent_names):
                 agent = agents[agent_name]
                 start = time.time()
+                print("going to run step for agent", agent_name, "robot", i)
                 op = agent.run_step(env, i, args.time_limit)
+                print(f'robot {i} chose {op}')
                 end = time.time()
                 if end - start > args.time_limit:
                     raise RuntimeError("Agent used too much time!")
