@@ -7,110 +7,142 @@ import time
 # TODO: section a : 3
 def smart_heuristic(env: WarehouseEnv, robot_id: int):
     robot = env.get_robot(robot_id)
-    other_robot = env.get_robot((robot_id + 1) % 2)
-
-    # We'll build the heuristic step by step
-    heuristic_value = 0
+    opponent = env.get_robot((robot_id + 1) % 2)
 
     credit = robot.credit
     battery = robot.battery
-    credit_factor = max(1, credit) * 100
-    holding_package_factor = 10 if robot.package is not None else 0
+    holding_package = robot.package is not None
 
-    if robot.package is None:
-        # Not holding a package: go get one
-        closest_package_distance = float('inf')
+    position = robot.position
+
+    # === Parameters ==
+    LOW_BATTERY_THRESHOLD = 8
+    w_credit = 100
+    w_battery = 1
+    w_holding_bonus = 300
+    w_target_inv_distance = 10
+    w_charge_inv_distance = 1000
+
+    # === Holding package: plan to drop off ===
+    if holding_package:
+        drop_pos = robot.package.destination
+        distance_to_target = manhattan_distance(position, drop_pos)
+    else:
+        # Plan to pick up package we can reach first
+        best_distance = float('inf')
+        my_min_dist = float('inf')
         for package in env.packages:
             if package.on_board:
-                my_distance = manhattan_distance(robot.position, package.position)
-                other_distance = manhattan_distance(other_robot.position, package.position)
-                # Prefer packages we can reach firstס
-                if my_distance < other_distance:
-                    closest_package_distance = min(closest_package_distance, my_distance)
-        if closest_package_distance < float('inf'):
-            heuristic_value += (1 / (closest_package_distance + 1))# weight can be tuned
-    else:
-        # Holding a package: go to drop-off
-        distance_to_drop_off = manhattan_distance(robot.position, robot.package.destination)
-        package_value = manhattan_distance(robot.package.position, robot.package.destination) * 2
+                my_dist = manhattan_distance(position, package.position)
+                opp_dist = manhattan_distance(opponent.position, package.position)
+                my_min_dist = min(my_min_dist, my_dist)
+                if my_dist < opp_dist:
+                    best_distance = min(best_distance, my_dist)
+        # in case haven't found any reachable package prefer to go to the middle
+        distance_to_target = best_distance if best_distance != float('inf') else my_min_dist
 
-        # Encourage going toward drop-off
-        heuristic_value += (package_value / (distance_to_drop_off + 1)) * 5  # reward for progress
+    # === Charging need ===
+    charge_inv_distance = 0
+    if battery < LOW_BATTERY_THRESHOLD:
+        min_dist_to_charge = float('inf')
+        for charge_station in env.charge_stations:
+            dist = manhattan_distance(position, charge_station.position)
+            min_dist_to_charge = min(min_dist_to_charge, dist)
+        charge_inv_distance = 1 / (min_dist_to_charge + 1)
 
-        # Strong bonus if standing on drop-off location and able to drop
+    # === Combine ===
+    heuristic = (
+            w_credit * credit
+            + w_battery * battery
+            + (w_holding_bonus if holding_package else 1) * w_target_inv_distance * (1 / (pow(distance_to_target, 0.1) + 1))
+            + w_charge_inv_distance * charge_inv_distance
+    )
 
-    return heuristic_value + credit_factor + holding_package_factor
+    return heuristic
+
 
 class AgentGreedyImproved(AgentGreedy):
     def heuristic(self, env: WarehouseEnv, robot_id: int):
         return smart_heuristic(env, robot_id)
 
 
-
 class AgentMinimax(Agent):
-    def __init__(self):
-        super().__init__()
-    def run_step(self, env, agent_id, time_limit):
+    def __init__(self, ):
+        self.max_agent_id = None
+        self.min_agent_id = None
+
+    def time_out(self, start_time, time_limit):
+        # leave 0.01 s to return from recusive calls
+        return time.time() - start_time > time_limit - 0.01
+
+    def run_step(self, env, max_agent_id, time_limit):
         start_time = time.time()
+        self.max_agent_id = max_agent_id
+        self.min_agent_id = 1 if self.max_agent_id == 0 else 0
+
         best_score = float('-inf')
         best_action = None
-        legal_actions = env.get_legal_operators(agent_id)
-
+        legal_actions = env.get_legal_operators(self.max_agent_id)
         for action in legal_actions:
-            if time.time() - start_time > time_limit:
-                break
+            if self.time_out(start_time, time_limit):
+                return best_action
             cloned_env = env.clone()
-            cloned_env.apply_operator(agent_id, action)
-            score = self.min_value(cloned_env, 1 - agent_id, start_time, time_limit)
+            cloned_env.apply_operator(self.max_agent_id, action)
+            score = self.min_value(cloned_env, start_time, time_limit)
             if score > best_score:
                 best_score = score
                 best_action = action
 
         return best_action
 
-    def max_value(self, env, agent_id, start_time, time_limit):
+    def max_value(self, env, start_time, time_limit):
         if env.done():
-            return self.utility(env, self.index)
+            return self.utility(env, )
         if time.time() - start_time > time_limit:
-            return self.heuristic(env, agent_id)
+            return self.heuristic(env, self.max_agent_id)
 
-        v = float('-inf')
-        for action in env.get_legal_operators(agent_id):
-            if time.time() - start_time > time_limit:
-                break
+        maximum_score = float('-inf')
+        for action in env.get_legal_operators(self.max_agent_id):
+            if self.time_out(start_time, time_limit):
+                return self.heuristic(env, self.max_agent_id)
             cloned_env = env.clone()
-            cloned_env.apply_operator(agent_id, action)
-            v = max(v, self.min_value(cloned_env, 1 - agent_id, start_time, time_limit))
-        return v
+            cloned_env.apply_operator(self.max_agent_id, action)
 
-    def min_value(self, env, agent_id, start_time, time_limit):
+            score = self.min_value(cloned_env, start_time, time_limit)
+            if score > maximum_score:
+                maximum_score = score
+        return maximum_score
+
+    def min_value(self, env, start_time, time_limit):
         if env.done():
-            return self.utility(env, self.index)
+            return self.utility(env)
         if time.time() - start_time > time_limit:
-            return self.heuristic(env, 1 - agent_id)
+            return (-1) * self.heuristic(env, self.min_agent_id)
 
-        v = float('inf')
-        for action in env.get_legal_operators(agent_id):
-            if time.time() - start_time > time_limit:
-                break
+        minimum_score = float('inf')
+        for action in env.get_legal_operators(self.min_agent_id):
+            if self.time_out(start_time, time_limit):
+                return self.heuristic(env, self.min_agent_id)
             cloned_env = env.clone()
-            cloned_env.apply_operator(agent_id, action)
-            v = min(v, self.max_value(cloned_env, 1 - agent_id, start_time, time_limit))
-        return v
+            cloned_env.apply_operator(self.min_agent_id, action)
+            score = self.max_value(cloned_env, start_time, time_limit)
+            if score < minimum_score:
+                minimum_score = score
+        return minimum_score
 
     def heuristic(self, env, agent_id):
         # Use the smart heuristic defined earlier
         return smart_heuristic(env, agent_id)
 
-    def utility(self, env, max_agent_id):
-        my_credit = env.get_robot(max_agent_id).credit
-        opp_credit = env.get_robot(1 - max_agent_id).credit
-        if my_credit > opp_credit:
-            return float('inf')  # win
-        elif my_credit < opp_credit:
-            return float('-inf')  # loss
+    def utility(self, env):
+        maximizer_credit = env.get_robot(self.max_agent_id).credit
+        minimizer_credit = env.get_robot(self.min_agent_id).credit
+        if maximizer_credit > minimizer_credit:
+            return float('inf')
+        elif minimizer_credit > maximizer_credit:
+            return float('-inf')
         else:
-            return 0  # draw
+            return 0
 
 
 class AgentAlphaBeta(Agent):
