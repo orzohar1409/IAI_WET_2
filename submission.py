@@ -8,53 +8,39 @@ from math import log
 # TODO: section a : 3
 def smart_heuristic(env: WarehouseEnv, robot_id: int):
     robot = env.get_robot(robot_id)
-    opponent = env.get_robot((robot_id + 1) % 2)
-
-    credit = robot.credit
-    battery = robot.battery
-    holding_package = robot.package is not None
-
+    other_robot = env.get_robot((robot_id + 1) % 2)
     position = robot.position
-    LOW_BATTERY_THRESHOLD = 5  # threshold for low battery
-    distance_to_drop_off = 0
-    distance_to_pick_up = 0
-    inv_distance_to_drop_off = 0
-    inv_distance_to_pick_up = 0
-    # === Holding package: plan to drop off ===
-    if holding_package:
-        drop_pos = robot.package.destination
-        distance_to_drop_off = manhattan_distance(position, drop_pos)
-        inv_distance_to_drop_off = 1 / pow(distance_to_drop_off + 1, 0.5) if distance_to_drop_off != float('inf') else 0
+    credits = robot.credit
+    battery = robot.battery
+
+    CREDIT_FACTOR = 7
+    PICKUP_FACTOR = 1
+    BATTERY_FACTOR = 6
+    DIST_TO_CLOSEST_PACK_FACTOR = 1
+    DIST_TO_DESTINATION_FACTOR = 1
+    END_FACTOR = 1/2
+    RANDOM_FACTOR = random.random()
+
+    closest_pickup_distance = float('inf')
+    for p in env.packages:
+        if p.on_board and manhattan_distance(position,p.position) < closest_pickup_distance:
+            closest_pickup_distance = manhattan_distance(position,p.position)
+
+    ADJUSTED_BATTERY = battery * BATTERY_FACTOR
+    ADJUSTED_CREDITS = credits * CREDIT_FACTOR
+
+    if battery == 0: # Robot avoids ending the game, unless it has a lot of points
+        return ADJUSTED_CREDITS * END_FACTOR + RANDOM_FACTOR
+
+    if robot.package:
+        # Robot holds a package
+        destination_distance = manhattan_distance(position, robot.package.destination)
+        return ADJUSTED_CREDITS + ADJUSTED_BATTERY + DIST_TO_DESTINATION_FACTOR / (destination_distance + 1) + RANDOM_FACTOR
+
     else:
-        # Plan to pick up package we can reach first
-        best_distance = float('inf')
-        my_min_dist = float('inf')
-        for package in env.packages:
-            if package.on_board:
-                my_dist = manhattan_distance(position, package.position)
-                my_min_dist = min(my_min_dist, my_dist)
-        # in case haven't found any reachable package prefer to go to the middle
-        inv_distance_to_pick_up = 1 / (my_min_dist + 1)  if my_min_dist != float('inf') else 0
+        # Robot doesn't hold a package
+        return ADJUSTED_CREDITS + ADJUSTED_BATTERY + DIST_TO_CLOSEST_PACK_FACTOR/(closest_pickup_distance+1) + RANDOM_FACTOR
 
-    # === Charging need ===
-    charge_inv_distance = 0
-    needs_charging = battery < LOW_BATTERY_THRESHOLD
-    if needs_charging:
-        min_dist_to_charge = float('inf')
-        for charge_station in env.charge_stations:
-            dist = manhattan_distance(position, charge_station.position)
-            min_dist_to_charge = min(min_dist_to_charge, dist)
-        charge_inv_distance = 1 / (min_dist_to_charge + 1) if min_dist_to_charge != float('inf') else 0
-
-    if holding_package and not needs_charging:
-        # If holding package, prefer to drop it off
-        return inv_distance_to_drop_off
-    if not holding_package and not needs_charging:
-            # If no distance to pick up, prefer to drop off if possible
-        return credit * 10 + inv_distance_to_pick_up
-    if needs_charging:
-        # If low on battery, prefer to charge
-        return charge_inv_distance * battery
 
 
 
