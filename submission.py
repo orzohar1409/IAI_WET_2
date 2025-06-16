@@ -13,13 +13,13 @@ def smart_heuristic(env: WarehouseEnv, robot_id: int):
     credits = robot.credit
     battery = robot.battery
 
-    CREDIT_FACTOR = 7
+    CREDIT_FACTOR = 10
     PICKUP_FACTOR = 1
-    BATTERY_FACTOR = 6
+    BATTERY_FACTOR = 4
     DIST_TO_CLOSEST_PACK_FACTOR = 1
     DIST_TO_DESTINATION_FACTOR = 1
     END_FACTOR = 1/2
-    RANDOM_FACTOR = random.random()
+    RANDOM_FACTOR = random.random() * 0.1
 
     closest_pickup_distance = float('inf')
     for p in env.packages:
