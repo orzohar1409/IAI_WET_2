@@ -53,6 +53,7 @@ class AgentMinimax(Agent):
     def __init__(self):
         self.max_agent_id = None
         self.min_agent_id = None
+        #self.depths = [] # DEBUG
 
     def time_out(self, start_time, time_limit):
         return (time.time() - start_time) > (time_limit - 0.01)
@@ -72,6 +73,7 @@ class AgentMinimax(Agent):
 
             for action in legal_actions:
                 if self.time_out(start_time, time_limit):
+                    #self.depths.append(depth) # DEBUG
                     return best_action_overall or best_action_at_depth
                 cloned_env = env.clone()
                 cloned_env.apply_operator(agent_id, action)
@@ -84,7 +86,8 @@ class AgentMinimax(Agent):
             if not self.time_out(start_time, time_limit):
                 best_action_overall = best_action_at_depth
                 depth += 1  # safely increase depth for next round
-
+        #self.depths.append(depth) # DEBUG
+        #print(f'Depths:{self.depths}, of length {len(self.depths)}') # DEBUG
         return best_action_overall
 
     def max_value(self, env, depth, start_time, time_limit):
@@ -114,12 +117,10 @@ class AgentMinimax(Agent):
 
 
 class AgentAlphaBeta(Agent):
-    # TODO: section c : 1
     def __init__(self):
         self.max_agent_id = None
         self.min_agent_id = None
-        self.alpha = None
-        self.beta = None
+        #self.depths = [] # DEBUG
 
     def time_out(self, start_time, time_limit):
         return (time.time() - start_time) > (time_limit - 0.01)
@@ -128,7 +129,6 @@ class AgentAlphaBeta(Agent):
         start_time = time.time()
         self.max_agent_id = agent_id
         self.min_agent_id = 1 if self.max_agent_id == 0 else 0
-
 
         best_action_overall = None
         depth = 1
@@ -140,10 +140,14 @@ class AgentAlphaBeta(Agent):
 
             for action in legal_actions:
                 if self.time_out(start_time, time_limit):
+                    #self.depths.append(depth) # DEBUG
                     return best_action_overall or best_action_at_depth
                 cloned_env = env.clone()
                 cloned_env.apply_operator(agent_id, action)
-                score = self.min_value(cloned_env, depth - 1, start_time, time_limit)
+
+                # score = self.min_value(cloned_env, depth - 1, start_time, time_limit)  # OLD
+                score = self.min_value(cloned_env, depth - 1, start_time, time_limit,
+                                       alpha=float('-inf'), beta=float('inf'))  # ADDED alpha-beta
 
                 if score > best_score:
                     best_score = score
@@ -151,11 +155,13 @@ class AgentAlphaBeta(Agent):
 
             if not self.time_out(start_time, time_limit):
                 best_action_overall = best_action_at_depth
-                depth += 1  # safely increase depth for next round
-
+                depth += 1
+        #self.depths.append(depth) # DEBUG
+        #print(f'Depths:{self.depths}, of length {len(self.depths)}') # DEBUG
         return best_action_overall
-
-    def max_value(self, env, depth, start_time, time_limit):
+# Depths:[10, 10, 9, 10, 10, 10, 10, 10, 9, 10, 9, 9, 9, 9, 9, 9, 9, 10, 13, 15, 26, 24, 22, 23, 21, 19, 17, 16, 16, 16, 16, 17, 16, 17, 17, 18, 17, 17, 19, 20, 19, 20, 23, 26, 27, 25, 23, 21, 19, 20, 18, 17, 16, 16, 16, 15, 15, 16, 15, 16, 16, 16, 17, 17, 18, 17, 17, 16, 15, 16, 15, 18, 18, 21, 19, 23, 21, 21263], of length 78
+# Depths:[12, 12, 11, 12, 13, 11, 11, 11, 10, 11, 10, 10, 10, 10, 10, 10, 10, 11, 18, 54, 413], of length 21
+    def max_value(self, env, depth, start_time, time_limit, alpha, beta):  # ADDED alpha, beta
         if env.done() or depth == 0 or self.time_out(start_time, time_limit):
             return self.heuristic(env, self.max_agent_id)
 
@@ -163,10 +169,17 @@ class AgentAlphaBeta(Agent):
         for action in env.get_legal_operators(self.max_agent_id):
             cloned_env = env.clone()
             cloned_env.apply_operator(self.max_agent_id, action)
-            v = max(v, self.min_value(cloned_env, depth - 1, start_time, time_limit))
+
+            # v = max(v, self.min_value(cloned_env, depth - 1, start_time, time_limit))  # OLD
+            v = max(v, self.min_value(cloned_env, depth - 1, start_time, time_limit, alpha, beta))  # ADDED
+
+            if v >= beta:  # ADDED
+                return v  # ADDED
+            alpha = max(alpha, v)  # ADDED
+
         return v
 
-    def min_value(self, env, depth, start_time, time_limit):
+    def min_value(self, env, depth, start_time, time_limit, alpha, beta):  # ADDED alpha, beta
         if env.done() or depth == 0 or self.time_out(start_time, time_limit):
             return self.heuristic(env, self.max_agent_id)
 
@@ -174,7 +187,14 @@ class AgentAlphaBeta(Agent):
         for action in env.get_legal_operators(self.min_agent_id):
             cloned_env = env.clone()
             cloned_env.apply_operator(self.min_agent_id, action)
-            v = min(v, self.max_value(cloned_env, depth - 1, start_time, time_limit))
+
+            # v = min(v, self.max_value(cloned_env, depth - 1, start_time, time_limit))  # OLD
+            v = min(v, self.max_value(cloned_env, depth - 1, start_time, time_limit, alpha, beta))  # ADDED
+
+            if v <= alpha:  # ADDED
+                return v  # ADDED
+            beta = min(beta, v)  # ADDED
+
         return v
 
     def heuristic(self, env, agent_id):
