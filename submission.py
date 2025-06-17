@@ -115,8 +115,70 @@ class AgentMinimax(Agent):
 
 class AgentAlphaBeta(Agent):
     # TODO: section c : 1
+    def __init__(self):
+        self.max_agent_id = None
+        self.min_agent_id = None
+        self.alpha = None
+        self.beta = None
+
+    def time_out(self, start_time, time_limit):
+        return (time.time() - start_time) > (time_limit - 0.01)
+
     def run_step(self, env: WarehouseEnv, agent_id, time_limit):
-        raise NotImplementedError()
+        start_time = time.time()
+        self.max_agent_id = agent_id
+        self.min_agent_id = 1 if self.max_agent_id == 0 else 0
+
+
+        best_action_overall = None
+        depth = 1
+
+        while not self.time_out(start_time, time_limit):
+            best_action_at_depth = None
+            best_score = float('-inf')
+            legal_actions = env.get_legal_operators(agent_id)
+
+            for action in legal_actions:
+                if self.time_out(start_time, time_limit):
+                    return best_action_overall or best_action_at_depth
+                cloned_env = env.clone()
+                cloned_env.apply_operator(agent_id, action)
+                score = self.min_value(cloned_env, depth - 1, start_time, time_limit)
+
+                if score > best_score:
+                    best_score = score
+                    best_action_at_depth = action
+
+            if not self.time_out(start_time, time_limit):
+                best_action_overall = best_action_at_depth
+                depth += 1  # safely increase depth for next round
+
+        return best_action_overall
+
+    def max_value(self, env, depth, start_time, time_limit):
+        if env.done() or depth == 0 or self.time_out(start_time, time_limit):
+            return self.heuristic(env, self.max_agent_id)
+
+        v = float('-inf')
+        for action in env.get_legal_operators(self.max_agent_id):
+            cloned_env = env.clone()
+            cloned_env.apply_operator(self.max_agent_id, action)
+            v = max(v, self.min_value(cloned_env, depth - 1, start_time, time_limit))
+        return v
+
+    def min_value(self, env, depth, start_time, time_limit):
+        if env.done() or depth == 0 or self.time_out(start_time, time_limit):
+            return self.heuristic(env, self.max_agent_id)
+
+        v = float('inf')
+        for action in env.get_legal_operators(self.min_agent_id):
+            cloned_env = env.clone()
+            cloned_env.apply_operator(self.min_agent_id, action)
+            v = min(v, self.max_value(cloned_env, depth - 1, start_time, time_limit))
+        return v
+
+    def heuristic(self, env, agent_id):
+        return smart_heuristic(env, agent_id)
 
 
 class AgentExpectimax(Agent):
