@@ -66,6 +66,7 @@ class AgentMinimax(Agent):
         best_action_overall = None
         depth = 1
 
+
         while not self.time_out(start_time, time_limit):
             best_action_at_depth = None
             best_score = float('-inf')
@@ -202,11 +203,75 @@ class AgentAlphaBeta(Agent):
 
 
 class AgentExpectimax(Agent):
-    # TODO: section d : 1
+    def __init__(self):
+        self.max_agent_id = None
+        self.min_agent_id = None
+        self.max_depth = 2 # initial depth
+        self.start_time = None
+        self.time_limit = None
+    def time_out(self):
+        return (time.time() - self.start_time) > (self.time_limit - 0.01)
+
     def run_step(self, env: WarehouseEnv, agent_id, time_limit):
-        raise NotImplementedError()
+        self.start_time = time.time()
+        self.time_limit = time_limit
+        self.max_agent_id = agent_id
+        self.min_agent_id = 1 if agent_id == 0 else 0  # Assuming two agents, 0 and 1
+        best_action = None
 
+        depth = 2
+        while True:
+            temp_best_action = None
+            temp_best_score = float('-inf')
+            for action in env.get_legal_operators(agent_id):
+                if self.time_out():
+                    return best_action
+                cloned_env = env.clone()
+                cloned_env.apply_operator(agent_id, action)
+                score = self.expecti_value(cloned_env, depth - 1)
+                if score > temp_best_score:
+                    temp_best_score = score
+                    temp_best_action = action
+            best_action = temp_best_action
+            depth += 1
 
+    def expecti_value(self, env, depth):
+        if env.done() or depth == 0 or self.time_out():
+            return self.heuristic(env, self.max_agent_id)
+
+        expected_value = 0
+        actions = env.get_legal_operators(self.min_agent_id)
+        weights = []
+        for action in actions:
+            if action == "move east" or action == "pick up":
+                weights.append(2)
+            else:
+                weights.append(1)
+
+        total_weight = sum(weights)
+        probabilities = [w / total_weight for w in weights]
+
+        for action, prob in zip(actions, probabilities):
+            cloned_env = env.clone()
+            cloned_env.apply_operator(self.min_agent_id, action)
+            expected_value += prob * self.max_value(cloned_env, depth - 1)
+
+        return expected_value
+
+    def max_value(self, env, depth):
+        if env.done() or depth == 0 or self.time_out():
+            return self.heuristic(env, self.max_agent_id)
+
+        max_score = float('-inf')
+        for action in env.get_legal_operators(self.max_agent_id):
+            cloned_env = env.clone()
+            cloned_env.apply_operator(self.max_agent_id, action)
+            score = self.expecti_value(cloned_env, depth - 1)
+            max_score = max(max_score, score)
+        return max_score
+
+    def heuristic(self, env, agent_id):
+        return smart_heuristic(env, agent_id)
 # here you can check specific paths to get to know the environment
 class AgentHardCoded(Agent):
     def __init__(self):
