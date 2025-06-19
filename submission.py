@@ -208,7 +208,7 @@ class AgentExpectimax(Agent):
         self.min_agent_id = None
         self.max_depth = 2 # initial depth
     def time_out(self, start_time, time_limit):
-        return (time.time() - start_time) > (time_limit - 0.01)
+        return (time.time() - start_time) > (time_limit - 0.1)
 
 
     def run_step(self, env: WarehouseEnv, agent_id, time_limit):
@@ -226,7 +226,11 @@ class AgentExpectimax(Agent):
                     return best_action
                 cloned_env = env.clone()
                 cloned_env.apply_operator(agent_id, action)
+                if self.time_out(start_time, time_limit):
+                    return best_action
                 score = self.expecti_value(cloned_env, depth - 1, start_time, time_limit)
+                if self.time_out(start_time, time_limit):
+                    return best_action
                 if score > temp_best_score:
                     temp_best_score = score
                     temp_best_action = action
@@ -235,13 +239,15 @@ class AgentExpectimax(Agent):
         return best_action
 
     def expecti_value(self, env, depth, start_time, time_limit):
-        if env.done() or depth == 0 or self.time_out(start_time, time_limit):
+        if self.time_out(start_time, time_limit) or env.done() or depth == 0:
             return self.heuristic(env, self.max_agent_id)
 
         expected_value = 0
         actions = env.get_legal_operators(self.min_agent_id)
         weights = []
         for action in actions:
+            if self.time_out(start_time, time_limit):
+                return self.heuristic(env, self.max_agent_id)
             if action == "move east" or action == "pick up":
                 weights.append(2)
             else:
@@ -249,26 +255,39 @@ class AgentExpectimax(Agent):
 
         total_weight = sum(weights)
         probabilities = [w / total_weight for w in weights]
-
+        if self.time_out(start_time, time_limit):
+            return self.heuristic(env, self.max_agent_id)
         for action, prob in zip(actions, probabilities):
             if self.time_out(start_time, time_limit):
                 return self.heuristic(env, self.max_agent_id)
             cloned_env = env.clone()
             cloned_env.apply_operator(self.min_agent_id, action)
+            if self.time_out(start_time, time_limit):
+                return self.heuristic(env, self.max_agent_id)
             expected_value += prob * self.max_value(cloned_env, depth - 1, start_time, time_limit)
+            if self.time_out(start_time, time_limit):
+                return self.heuristic(env, self.max_agent_id)
 
         return expected_value
 
     def max_value(self, env, depth, start_time, time_limit):
-        if env.done() or depth == 0 or self.time_out(start_time, time_limit):
+        if self.time_out(start_time, time_limit) or env.done() or depth == 0:
             return self.heuristic(env, self.max_agent_id)
 
         max_score = float('-inf')
         for action in env.get_legal_operators(self.max_agent_id):
+            if self.time_out(start_time, time_limit):
+                return self.heuristic(env, self.max_agent_id)
             cloned_env = env.clone()
             cloned_env.apply_operator(self.max_agent_id, action)
+            if self.time_out(start_time, time_limit):
+                return self.heuristic(env, self.max_agent_id)
             score = self.expecti_value(cloned_env, depth - 1, start_time, time_limit)
+            if self.time_out(start_time, time_limit):
+                return self.heuristic(env, self.max_agent_id)
             max_score = max(max_score, score)
+            if self.time_out(start_time, time_limit):
+                return self.heuristic(env, self.max_agent_id)
         return max_score
 
     def heuristic(self, env, agent_id):
